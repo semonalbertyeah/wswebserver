@@ -1,25 +1,21 @@
 import re
 from string import Template
-
 import logging, os, sys, traceback
-
-# from websockify import websocket
-# from websockify.token_plugins import BasePlugin
-# from websockify.websocketproxy import (ProxyRequestHandler,
-#                             WebSocketProxy, LibProxyServer,
-#                             logger_init)
-
-from websockify import websocket
-from websockify.token_plugins import BasePlugin
-from websockify.websocketproxy import (ProxyRequestHandler,
-                            WebSocketProxy, LibProxyServer)
-from websockify.websocketproxy import logger_init
-
 import inspect
 
-# debug tools
-def get_caller_name():
-    return inspect.stack()[2][3]
+from websockify import websocket
+from websockify.websocketproxy import (
+        ProxyRequestHandler, WebSocketProxy, LibProxyServer
+    )
+from websockify.websocketproxy import logger_init
+
+from plugins import CredentialFile
+
+
+class HTTPError(Exception):
+    def __init__(self, err_code, msg=None):
+        self.err_code = err_code
+        self.msg = msg
 
 
 # These 2 plugins are used to access config files and credential files
@@ -27,53 +23,14 @@ _token_plugin = None
 _credential_plugin = None
 
 
-# credential plugin implemented as websockify.token_plugins.TokenFile
-class ReadOnlyCredentialFile(BasePlugin):
-    # source is a credential file with lines like
-    #   token: password
-    # or a directory of such files
-    def __init__(self, *args, **kwargs):
-        super(ReadOnlyCredentialFile, self).__init__(*args, **kwargs)
-        self._targets = None
-
-    def _load_targets(self):
-        if os.path.isdir(self.source):
-            cfg_files = [os.path.join(self.source, f) for
-                         f in os.listdir(self.source)]
-        else:
-            cfg_files = [self.source]
-
-        self._targets = {}
-        for f in cfg_files:
-            for line in [l.strip() for l in open(f).readlines()]:
-                if line and not line.startswith('#'):
-                    tok, password = line.split(': ')
-                    self._targets[tok] = password.strip()
-
-    def lookup(self, token):
-        if self._targets is None:
-            self._load_targets()
-
-        if token in self._targets:
-            return self._targets[token]
-        else:
-            return None
-
-
-class CredentialFile(ReadOnlyCredentialFile):
-    # source is a token file with lines like
-    #   token: password
-    # or a directory of such files
-    def lookup(self, token):
-        self._load_targets()
-
-        return super(CredentialFile, self).lookup(token)
-
-
-class WebSocketProxyD(WebSocketProxy):
+# wesockify.websocket.WebSocketServer <- websockify.websocketproxy.WebSocketProxy <- WsWebServer
+class WsWebServer(WebSocketProxy):
     """
+        A websocket proxy and a web server.
+        Inheriting from WebSocketProxy.
         Added features:
-            In daemon mode, pid file will be created.
+            A tiny web framework inspired by flask.
+            In daemon mode, pid file will be created (only if current user has root priviliege).
     """
     pidfile_path=os.path.normpath('/var/run/websockify/fronwebsockify.pid')
     _daemon_pid = None
@@ -88,7 +45,7 @@ class WebSocketProxyD(WebSocketProxy):
                     self.daemon_pid)
             self.warn('exit 0')
             sys.exit(0)
-        super(WebSocketProxyD, self).daemonize(*args, **kwargs)
+        super(WsWebServer, self).daemonize(*args, **kwargs)
         if self.run_as_root:
             self.msg('root user, run daemon as service.')
             self.create_pidfile()
@@ -137,7 +94,7 @@ class WebSocketProxyD(WebSocketProxy):
 
     def start_server(self):
         try:
-            super(WebSocketProxyD, self).start_server()
+            super(WsWebServer, self).start_server()
         except:
             self.error(traceback.format_exc())
         finally:
@@ -148,8 +105,52 @@ class WebSocketProxyD(WebSocketProxy):
 
 
 
-
-class ProxyRequestHandlerFW(ProxyRequestHandler, object):
+### Inheritance ###
+# SocketServer.BaseRequestHandler
+# |     __init__:  setup -> handel -> finish
+# |
+# SocketServer.StreamRequestHandler 
+# |     setup: rfile, wfile
+# |     finish: close file, wfile
+# |
+# BaseHTTPServer.BaseHTTPRequestHandler
+# |     handle: 
+# |         while not close_connection:
+# |             handle_one_request
+# |     handle_one_request:
+# |         parse_request
+# |         call do_[method] -> if no such method, return 501
+# |     parse_request:
+# |         parse first line (like "GET /path HTTP/1.1")
+# |         command <- "GET"
+# |         path <- "/path"
+# |         version <- "HTTP/1.1"
+# |         headers = mimetools.Message(rfile, 0)
+# |         if headers['Connection'] == 'keep-alive': -> close_connection = False
+# |         elif headers['Connection'] == 'close': close_connection = True
+# |
+# SimpleHTTPServer.SimpleHTTPRequestHandler
+# |     do_GET:
+# |         f = send_head()
+# |         if f: -> shutil.copyfileobj(f, wfile) -> f.close()
+# |     do_HEAD:
+# |         f = send_head()
+# |         if f: f.close()
+# |
+# websockify.websocket.WebSocketRequestHandler
+# |     __init__: store some cfg -> SimpleHTTPRequestHandler.__init__(...)
+# |     do_GET:
+# |         if is_websocket: -> handle websocket request
+# |         else: SimpleHTTPRequestHandler.do_GET(...)
+# |
+# websockify.websocket.ProxyRequestHandler
+# |
+# |
+# |WsWebHandler
+# |
+# |
+#####
+class WsWebHandler(ProxyRequestHandler, object):
     """
         Implementing dynamic url handling with python regex (re module)
         note:
@@ -166,16 +167,20 @@ class ProxyRequestHandlerFW(ProxyRequestHandler, object):
     class ProxyRequestHandlerFWException(Exception):
         pass
 
-    class HTTPError(Exception):
-        def __init__(self, err_code, msg=None):
-            self.err_code = err_code
-            self.msg = msg
+    class DoNothing(Exception):
+        """
+            scenario:
+                parse_request return False
+                -> which means an error occured, but error responed is already sent by parse_request
+        """
+        pass
 
-    def finish(self):
-        super(ProxyRequestHandlerFW, self).finish()
-        print '---- handling finished, pid:', os.getpid()
-        if self.server.ws_connection:
-            print '---- websocket connection, do something'
+
+    # def finish(self):
+    #     super(WsWebHandler, self).finish()
+    #     print '---- handling finished, pid:', os.getpid()
+    #     if self.server.ws_connection:
+    #         print '---- websocket connection, do something'
 
     @classmethod
     def add_url_rule(cls, url_pattern, handler, methods):
@@ -183,7 +188,7 @@ class ProxyRequestHandlerFW(ProxyRequestHandler, object):
         methods = set(m.upper() for m in methods)
         old_handler, old_methods = cls.url_mappings.get(url_repattern, (None, None))
         if old_handler is not None and old_handler != handler:
-            raise ProxyRequestHandlerFWException, "url mapping '%s' exists" % url_pattern
+            raise WsWebHandler.ProxyRequestHandlerFWException, "url mapping '%s' exists" % url_pattern
 
         cls.url_mappings[url_repattern] = (handler, methods)
 
@@ -194,7 +199,7 @@ class ProxyRequestHandlerFW(ProxyRequestHandler, object):
             methods -> subset of ['GET', 'POST']
 
             calling example:
-                @ProxyRequestHandlerFW.route('/index', ['GET', 'POST'])
+                @WsWebHandler.route('/index', ['GET', 'POST'])
         """
         def decorator(f):
             cls.add_url_rule(url_pattern, f, methods)
@@ -217,8 +222,48 @@ class ProxyRequestHandlerFW(ProxyRequestHandler, object):
                         args = m.groups()
                         return handler(*args)
                 else:
-                    raise ProxyRequestHandlerFW.HTTPError(501, 'not allowed method %s' % method)
-        raise ProxyRequestHandlerFW.HTTPError(404, "no matching url: %s" % url)  # not found
+                    raise HTTPError(501, 'not allowed method %s' % method)
+        raise HTTPError(404, "no matching url: %s" % url)  # not found
+
+    def handle_user_exception(self, e):
+        if isinstance(e, HTTPError):
+            handle_http_exception(e)
+            return
+        # handle user registered exceptions
+
+    def handle_http_exception(self, e):
+        self.send_error(e.err_code, e.msg)
+
+    def handle_exception(self, e):
+        # refer to flask.app.Flask.handle_exception, return a formatted traceback.
+        self.send_error(500, traceback.format_exc())
+
+    def _parse(self):
+        self.raw_requestline = self.rfile.readline()
+        if not self.raw_requestline:
+            raise HTTPError(500, 'No data received.')
+        if not self.parse_request():    # An error code has been sent, just exit
+            raise self.DoNothing()
+
+    # BaseHTTPServer.BaseHTTPHandler.handle_one_request (called by BaseHTTPServer.BaseHTTPHandler.handle_request)
+    def handle_one_request(self):
+        """
+            Where the request is handled.
+        """
+        self.error('debug info: WsWebHandler.handle_one_request')
+        try:
+            try:
+                self._parse()
+                # before_request
+                mname = 'do_' + self.command
+                if not hasattr(self, mname):
+                    raise HTTPError(501, 'Unsupported method (%r)' % self.command)
+                method = getattr(self, mname)
+                method()
+            except Exception, e:
+                self.handle_user_exception(e)
+        except Exception e:
+            self.handle_exception(e)
 
     # send_response is defined under BaseHTTPRequestHandler
     def send_response_content(self, content, extra_headers={}, code=200):
@@ -234,114 +279,56 @@ class ProxyRequestHandlerFW(ProxyRequestHandler, object):
         self.wfile.write(content)
         self.wfile.flush()
 
+    def _common_process(self):
+        r = self.handle_route()
+        if isinstance(r, tuple):
+            if len(r) == 2:
+                r, headers = r
+                self.send_response_content(r, extra_headers=headers)
+            elif len(r) == 3:
+                r, headers, code = r
+                self.send_response_content(r, extra_headers=headers, code=code)
+            else:
+                raise WsWebHandler.ProxyRequestHandlerFWException, "wrong return value from handlers for %s" % self.path
+        else:
+            self.send_response_content(r)
+
 
     def do_GET(self):
         """
-            method handler called by BaseHTTPRequestHandler.handle
+            method handler called by BaseHTTPRequestHandler.handle_one_request
         """
         try:
-            r = self.handle_route()
-            if isinstance(r, tuple):
-                if len(r) == 2:
-                    r, headers = r
-                    self.send_response_content(r, extra_headers=headers)
-                elif len(r) == 3:
-                    r, headers, code = r
-                    self.send_response_content(r, extra_headers=headers, code=code)
-                else:
-                    raise ProxyRequestHandlerFW.ProxyRequestHandlerFWException, "wrong return value from handlers for %s" % self.path
-            else:
-                self.send_response_content(r)
-        except ProxyRequestHandlerFW.HTTPError, e:
-            # BaseHTTPRequestHandler.send_error
+            self._common_process()
+        except HTTPError, e:
             if e.err_code == 404:
                 # if no dynamic url handler -> try to serve static file.
-                super(ProxyRequestHandlerFW, self).do_GET()
+                super(WsWebHandler, self).do_GET()
             else:
-                self.send_error(e.err_code, e.msg)
+                raise e # -> reraise
 
-    def do_PUT(self):
-        try:
-            r = self.handle_request()
-            if isinstance(r, tuple):
-                if len(r) == 2:
-                    r, headers = r
-                    self.send_response_content(r, extra_headers=headers)
-                elif len(r) == 3:
-                    r, headers, code = r
-                    self.send_response_content(r, extra_headers=headers, code=code)
-                else:
-                    raise ProxyRequestHandlerFW.ProxyRequestHandlerFWException, "wrong return value from handlers for %s" % self.path
-            else:
-                self.send_response_content(r)
-        except ProxyRequestHandlerFW.HTTPError, e:
-            self.send_error(e.err_code, e.msg)
+    do_PUT = _common_process
+    do_POST = _common_process
 
 
 
+# debug tools
+def get_caller_name():
+    return inspect.stack()[2][3]
 
 
-# ----- urls -----
-@ProxyRequestHandlerFW.route(r'^/vnc(\?uuid=(?P<uuid>.+))?$')
-@ProxyRequestHandlerFW.route(r'^/fap(\?uuid=(?P<uuid>.+))?$')
-def vnc_handler(uuid=None):
+def abort(code, msg=None):
     """
-        get vnc credential according to uuid
-        put credential info into vnc_auto.html with template
-        return templated vnc_auto.html
+        abort with an HTTP status code.
     """
-
-    # print '=============== vnc_handler'    # del line
-    target_host_info = {'path': r'""', 'token': r'""', 'password': '""'}
-
-    if uuid is None:
-        raise ProxyRequestHandlerFW.HTTPError(403, 'Require UUID')
-
-    token = str(uuid)
-    target_host_info['token'] = '"%s"' % token
-
-    if _token_plugin is None:
-        raise ProxyRequestHandlerFW.HTTPError(400, 'Token file is not used.')
-
-    if _token_plugin.lookup(token) is None:
-        raise ProxyRequestHandlerFW.HTTPError(403, 
-            'UUID \"%s\" does not exist' % str(token))
-
-    if _credential_plugin is not None:
-        passwd = _credential_plugin.lookup(token)
-        if passwd is not None:
-            target_host_info['password'] = '"%s"' % passwd
-
-    # print 'target host:', target_host_info
-
-    try:
-        # template is vnc_fronware.html at the root of web
-        with open('vnc_fronware.html') as f:
-            content = f.read()
-            # safe_substitue -> ignore $id which is not present in keywords
-            content = Template(content).safe_substitute(target_host_info) 
-            return content
-    except IOError, e:
-        if e.errno == 2:
-            raise ProxyRequestHandlerFW.HTTPError(404, 'vnc_auto.html does not exist.')
-        else:
-            raise e
-
-
+    raise HTTPError(code, msg)
 
 
 import optparse
 
-#def websockify_init_fw():
-#    """
-#        same as websockify_init in websocketproxy.py
-#        but: start 
-#    """
-#    return websocketproxy.websockify_init(ProxyRequestHandlerFW)
-
 # re-implement websocketproxy.websockify_init
 # add an option --target-credential
-def websockify_init_fw(HandlerCls=None):
+def runserver(HandlerCls=None):
     logger_init()
 
     usage = "\n    %prog [options]"
@@ -546,18 +533,15 @@ def websockify_init_fw(HandlerCls=None):
     else:
         # Use internal service framework
         # server = WebSocketProxy(**opts.__dict__)
-        server = WebSocketProxyD(**opts.__dict__)
+        server = WsWebServer(**opts.__dict__)
         server.start_server()
 
-
-def fronwarevnc_init():
-    websockify_init_fw(ProxyRequestHandlerFW)
 
 
 
 
 if __name__ == '__main__':
-    websockify_init_fw(ProxyRequestHandlerFW)
+    runserver(WsWebHandler)
 
 
 

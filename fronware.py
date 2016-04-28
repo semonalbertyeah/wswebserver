@@ -1,5 +1,10 @@
-from wswebserver import WsWebHandler, runserver, HTTPError
+from string import Template
 
+from wswebserver import (
+    WsWebHandler, runserver,
+    runserver, abort
+)
+import wswebserver
 
 class App(WsWebHandler):
     pass
@@ -18,20 +23,19 @@ def vnc_handler(uuid=None):
     target_host_info = {'path': r'""', 'token': r'""', 'password': '""'}
 
     if uuid is None:
-        raise HTTPError(403, 'Require UUID')
+        abort(403, 'Require UUID')
 
     token = str(uuid)
     target_host_info['token'] = '"%s"' % token
 
-    if _token_plugin is None:
-        raise HTTPError(400, 'Token file is not used.')
+    if wswebserver.tokens is None:
+        abort(400, 'Token file is not used.')
 
-    if _token_plugin.lookup(token) is None:
-        raise HTTPError(403, 
-            'UUID \"%s\" does not exist' % str(token))
+    if wswebserver.tokens.lookup(token) is None:
+        abort(403,  'UUID \"%s\" does not exist' % str(token))
 
-    if _credential_plugin is not None:
-        passwd = _credential_plugin.lookup(token)
+    if wswebserver.credentials is not None:
+        passwd = wswebserver.credentials.lookup(token)
         if passwd is not None:
             target_host_info['password'] = '"%s"' % passwd
 
@@ -46,7 +50,31 @@ def vnc_handler(uuid=None):
             return content
     except IOError, e:
         if e.errno == 2:
-            raise HTTPError(404, 'vnc_auto.html does not exist.')
+            abort(404, 'vnc_auto.html does not exist.')
         else:
             raise e
- 
+
+# below are just test
+@App.errorhandler(KeyError)
+def keyerror_handler(e):
+    print '---- KeyError handler ----'
+    return e.message, 400, {}
+
+
+@App.errorhandler(501)
+def err_501_handler(e):
+    return 'error handler 501'
+
+
+@App.route(r'/test/')
+def test():
+    # abort(501)
+    raise KeyError, "test KeyError message"
+    # return 'just a test value.'
+
+
+def run():
+    runserver(App)
+
+if __name__ == '__main__':
+    run()

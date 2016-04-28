@@ -1,7 +1,8 @@
 import re
-from string import Template
 import logging, os, sys, traceback
 import inspect
+
+from BaseHTTPServer import _quote_html
 
 from websockify import websocket
 from websockify.websocketproxy import (
@@ -9,18 +10,39 @@ from websockify.websocketproxy import (
     )
 from websockify.websocketproxy import logger_init
 
-from plugins import CredentialFile
 
+from plugins import CredentialFile
+from _compat import integer_types, reraise
+
+
+# app/process scope (app_ctx), normally readonly after starting to handle requests.
+
+# req ctx, created per-request.
+
+
+# These 2 plugins are used to access config files and credential files (app/process scope)
+tokens = None
+credentials = None
+
+def reraise_exception(e):
+    exc_type, exc_value, tb = sys.exc_info()
+    reraise(exc_type, exc_value, tb)
+
+# def quote_html(html):
+#     html = _quote_html(html)
+#     html = html.replace('\r\n', '<br />')
+#     html = html.replace('\n\r', '<br />')
+#     html = html.replace('\r', '<br />')
+#     html = html.replace('\n', '<br />')
+#     return html
 
 class HTTPError(Exception):
+    code = None
+    msg = None
     def __init__(self, err_code, msg=None):
-        self.err_code = err_code
+        self.code = err_code
         self.msg = msg
 
-
-# These 2 plugins are used to access config files and credential files
-_token_plugin = None
-_credential_plugin = None
 
 
 # wesockify.websocket.WebSocketServer <- websockify.websocketproxy.WebSocketProxy <- WsWebServer
@@ -158,16 +180,51 @@ class WsWebHandler(ProxyRequestHandler, object):
             If there is both a dynamic url and a static url with same name,
             dynamic url handler will always be called.
     """
-    url_mappings = {}
+    # to store routes
+    # _url_mappings = {
+    #     re.compile('pattern') : handler,
+    #     ...
+    # }
+    _url_mappings = {}
+
+    # to store exception handlers
+    # _usr_exceptions = {
+    #     None : {exception_cls : handler, ...},    # custom exception
+    #     status_code : handler,    # custom status handler
+    #     ...
+    # }
+    _usr_exceptions = {}
+
     default_headers = {
         'Content-Type': 'text/html',
-        'Server': 'Fronware-custom'
+        'Server': 'Fron-Awesome',
+        'Connection': 'close'   # deactive keep-alive
         }
 
-    class ProxyRequestHandlerFWException(Exception):
+    error_message_format = """\
+<head>
+<title>Error Response</title>
+</head>
+<body>
+<h1>Error Response</h1>
+<p>Error Code %(code)d</p>
+<p>Message: %(message)s</p>
+<p>Description: </p>
+<pre>
+%(explain)s
+</pre>
+</body>
+"""
+
+    default_status = 200
+
+    class HandlerException(Exception):
+        """
+            any other fatal exceptions (may replace it with assertion)
+        """
         pass
 
-    class DoNothing(Exception):
+    class ErrButDoNothing(Exception):
         """
             scenario:
                 parse_request return False
@@ -182,15 +239,23 @@ class WsWebHandler(ProxyRequestHandler, object):
     #     if self.server.ws_connection:
     #         print '---- websocket connection, do something'
 
+
+    ######################
+    # route
+    ######################
+
     @classmethod
     def add_url_rule(cls, url_pattern, handler, methods):
         url_repattern = re.compile(url_pattern)
         methods = set(m.upper() for m in methods)
-        old_handler, old_methods = cls.url_mappings.get(url_repattern, (None, None))
-        if old_handler is not None and old_handler != handler:
-            raise WsWebHandler.ProxyRequestHandlerFWException, "url mapping '%s' exists" % url_pattern
 
-        cls.url_mappings[url_repattern] = (handler, methods)
+        # # may be an exception should be raised, as for this classmethod is an outer interface.
+        # assert cls._url_mappings.get(url_repattern, None) is None   # never been registered
+        if cls._url_mappings.get(url_repattern, None) is not None:
+            raise WsWebHandler.HandlerException, "url mapping '%s' exists" % url_pattern
+
+        cls._url_mappings[url_repattern] = (handler, methods)
+
 
     @classmethod
     def route(cls, url_pattern, methods=('GET',)):
@@ -199,7 +264,9 @@ class WsWebHandler(ProxyRequestHandler, object):
             methods -> subset of ['GET', 'POST']
 
             calling example:
-                @WsWebHandler.route('/index', ['GET', 'POST'])
+                @WsWebHandler.route('/index', ['GET', 'POST']):
+                def index():
+                    return 
         """
         def decorator(f):
             cls.add_url_rule(url_pattern, f, methods)
@@ -210,7 +277,7 @@ class WsWebHandler(ProxyRequestHandler, object):
     def handle_route(self):
         method = self.command.upper()
         url = self.path
-        for url_ptn, (handler, methods) in self.url_mappings.iteritems():
+        for url_ptn, (handler, methods) in self._url_mappings.iteritems():
             m = url_ptn.match(url)
             if m:
                 if method in methods:
@@ -222,51 +289,186 @@ class WsWebHandler(ProxyRequestHandler, object):
                         args = m.groups()
                         return handler(*args)
                 else:
-                    raise HTTPError(501, 'not allowed method %s' % method)
-        raise HTTPError(404, "no matching url: %s" % url)  # not found
+                    raise HTTPError(501, 'method %s is not allowed for url "%s"' % (method, url))
+        raise HTTPError(404, 'not registered url "%s"' % url)  # not found
+
+
+    def make_response(self, rv, default_status=200, extra_headers={}):
+        if isinstance(rv, tuple):
+            if len(rv) == 2:
+                content, headers = rv
+                status = default_status
+            elif len(rv) == 3:
+                content, status, headers = rv
+            else:
+                raise WsWebHandler.HandlerException, 'make_response: wrong parameter: %r' % rv
+        else:
+            assert isinstance(rv, (str, unicode))
+            content = rv
+            status = default_status
+            headers = {}
+
+        headers.update(extra_headers)
+        return content, status, headers
+
+    def make_error_response(self, status, desc=None, extra_headers={}):
+        assert status >= 400, ("make_error_response, invalid error status code: %r", status)
+        default_responses = self.responses  # BaseHTTPRequestHandler
+        if default_responses.has_key(status):
+            phrase, explain = default_responses[status]
+        else:
+            phrase, explain = '???', '???'
+
+        if not desc:
+            desc = explain
+
+        content = self.error_message_format % { # BaseHTTPRequestHandler
+            'code': status,
+            'message': _quote_html(phrase),
+            'explain': _quote_html(desc)
+            # 'explain':desc
+        }
+
+        headers = {
+                'Connection': 'close',
+                'Content-Type': self.error_content_type # BaseHTTPRequestHandler
+            }
+        headers.update(extra_headers)
+        return content, status, headers
+
+    ###################
+    # error handler
+    ###################
+
+    @classmethod
+    def _register_error_handler(cls, code_or_ecls, f):
+        if isinstance(code_or_ecls, integer_types):
+            status_code = code_or_ecls
+            cls._usr_exceptions[status_code] = f    # custom handlers for http error
+        else:
+            assert inspect.isclass(code_or_ecls)
+            ename = code_or_ecls.__name__
+            cls._usr_exceptions.setdefault(None, {})[ename] = f     # handlers for custom exceptions
+
+
+    @classmethod
+    def errorhandler(cls, code_or_ecls):
+        """
+            register custom exception handler
+            Example:
+            # custom exception handler
+            @WsWebHandler.error(KeyError)
+            def keyerror_handler(e):
+                return content, headers [, code] # note: default code is 500
+            # custom http error handler
+            @WsWebHandler.error(401)
+            def unauthorized_handler(e):
+                return content, headers [, code]   # note: default code is registered code
+        """
+        def decorator(f):
+            cls._register_error_handler(code_or_ecls, f)
+            return f
+        return decorator
+
+
+    def handle_http_exception(self, e):
+        assert isinstance(e, HTTPError)
+        status_code = e.code
+        handlers = self._usr_exceptions
+        if handlers.has_key(status_code):
+            handler = handlers[status_code]
+            return self.make_response(handler(e), default_status=status_code, 
+                                extra_headers={'Connection': 'close'})
+
+        return self.make_error_response(e.code, e.msg)
+
 
     def handle_user_exception(self, e):
         if isinstance(e, HTTPError):
-            handle_http_exception(e)
-            return
-        # handle user registered exceptions
+            return self.handle_http_exception(e)
 
-    def handle_http_exception(self, e):
-        self.send_error(e.err_code, e.msg)
+        ename = e.__class__.__name__
+        custom_handlers = self._usr_exceptions.get(None, None)
+        if custom_handlers:
+            if custom_handlers.has_key(ename):
+                handler = custom_handlers[ename]
+                return self.make_response(handler(e), default_status=500,
+                                extra_headers={'Connection': 'close'})
+
+        reraise_exception(e)
+
 
     def handle_exception(self, e):
         # refer to flask.app.Flask.handle_exception, return a formatted traceback.
-        self.send_error(500, traceback.format_exc())
+        return self.make_error_response(500, traceback.format_exc())
+
+
+    ###########################
+    # internals
+    ###########################
 
     def _parse(self):
+        """
+            Parse http packet.
+        """
         self.raw_requestline = self.rfile.readline()
         if not self.raw_requestline:
             raise HTTPError(500, 'No data received.')
         if not self.parse_request():    # An error code has been sent, just exit
-            raise self.DoNothing()
+            raise WsWebHandler.ErrButDoNothing('http parsing error, but exception handling is ready done.')
 
-    # BaseHTTPServer.BaseHTTPHandler.handle_one_request (called by BaseHTTPServer.BaseHTTPHandler.handle_request)
+
+    # note:
+    #   There's a process_request method in WsWebServer.
+    #   Do not misjudge them.
+    def process_request(self):
+        try:
+            rv = None
+            self._parse()
+            # ---{rv = before_request()}---
+            if not rv:
+                mname = 'do_' + self.command
+                if hasattr(self, mname):
+                    method = getattr(self, mname)
+                    rv = method()
+                else:
+                    rv = self._common_process()
+        except Exception, e:
+            rv = self.handle_user_exception(e)
+
+        response = None
+        if rv:
+            response = self.make_response(rv)
+        # ---{after request(response=None)}---
+        return response
+
+
+    # BaseHTTPServer.BaseHTTPHandler.handle_one_request
+    # (called by BaseHTTPServer.BaseHTTPHandler.handle_request)
     def handle_one_request(self):
         """
-            Where the request is handled.
+            Rewriting BaseHTTPHandler.handle_one_request
         """
-        self.error('debug info: WsWebHandler.handle_one_request')
+        # ---{init req ctx}---
         try:
+            response = None
             try:
-                self._parse()
-                # before_request
-                mname = 'do_' + self.command
-                if not hasattr(self, mname):
-                    raise HTTPError(501, 'Unsupported method (%r)' % self.command)
-                method = getattr(self, mname)
-                method()
+                response = self.process_request()
             except Exception, e:
-                self.handle_user_exception(e)
-        except Exception e:
-            self.handle_exception(e)
+                response = self.make_response(self.handle_exception(e))
+            except WsWebHandler.ErrButDoNothing, e:
+                self.log_message('ErrButDoNothing: %r' % e)
+
+            if response:
+                content, status, headers = response
+                self.send(content, status, headers)
+
+        finally:
+            # ---{destroy req ctx}---
+            pass
 
     # send_response is defined under BaseHTTPRequestHandler
-    def send_response_content(self, content, extra_headers={}, code=200):
+    def send(self, content, code=200, extra_headers={}):
         headers = self.default_headers
         headers.update(extra_headers)
         headers.update({'Content-Length': str(len(content))})
@@ -280,35 +482,26 @@ class WsWebHandler(ProxyRequestHandler, object):
         self.wfile.flush()
 
     def _common_process(self):
-        r = self.handle_route()
-        if isinstance(r, tuple):
-            if len(r) == 2:
-                r, headers = r
-                self.send_response_content(r, extra_headers=headers)
-            elif len(r) == 3:
-                r, headers, code = r
-                self.send_response_content(r, extra_headers=headers, code=code)
-            else:
-                raise WsWebHandler.ProxyRequestHandlerFWException, "wrong return value from handlers for %s" % self.path
-        else:
-            self.send_response_content(r)
+        return self.handle_route()
 
 
     def do_GET(self):
         """
-            method handler called by BaseHTTPRequestHandler.handle_one_request
+            First, try to retrieve registered route.
+            If no corresponding route registered (which will rasie HTTPError(404)),
+            try to call ProxyRequestHandler.do_GET (which handles websocket and static serving).
         """
         try:
-            self._common_process()
+            return self._common_process()
         except HTTPError, e:
-            if e.err_code == 404:
-                # if no dynamic url handler -> try to serve static file.
-                super(WsWebHandler, self).do_GET()
+            if e.code == 404:
+                # websocket and static file serving
+                super(WsWebHandler, self).do_GET()  # return no response
             else:
-                raise e # -> reraise
+                reraise_exception(e)
 
-    do_PUT = _common_process
-    do_POST = _common_process
+    # do_PUT = _common_process
+    # do_POST = _common_process
 
 
 
@@ -445,9 +638,9 @@ def runserver(HandlerCls=None):
 
     # credential file  for fronware
     if opts.target_credential:
-        global _credential_plugin
+        global credentials
         opts.target_credential = os.path.abspath(opts.target_credential)
-        _credential_plugin = CredentialFile(opts.target_credential)
+        credentials = CredentialFile(opts.target_credential)
     del opts.target_credential
 
 
@@ -501,8 +694,8 @@ def runserver(HandlerCls=None):
 
         opts.token_plugin = token_plugin_cls(opts.token_source)
 
-        global _token_plugin
-        _token_plugin = opts.token_plugin
+        global tokens
+        tokens = opts.token_plugin
 
     del opts.token_source
 
@@ -521,7 +714,9 @@ def runserver(HandlerCls=None):
 
     if HandlerCls != None:
         opts.RequestHandlerClass = HandlerCls
-
+    else:
+        # static file serving and websocket proxy
+        opts.RequestHandlerClass = WsWebHandler
 
     # Create and start the WebSockets proxy
     libserver = opts.libserver

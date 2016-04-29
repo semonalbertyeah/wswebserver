@@ -1,0 +1,25 @@
+# Config file for websockify
+# shell variables
+
+# address bound to
+# you may just specify a port
+#ADDR=0.0.0.0:8080
+
+# web root of websockify
+#WEB="/usr/share/novnc"
+
+# token files
+#TOKENS=/etc/websockify/tokens
+
+# password files (used by fronwebsockify)
+#PASSWDS=/etc/websockify/passwds
+
+# Automatically respond to ping frames with a pong
+#PONG="false"
+
+# To send a ping to the client every HEARTBEAT seconds
+# default: 0. disabled
+#HEARTBEAT=0
+
+# Files where logs will be saved.
+#LOGS="/var/log/fronwebsockify"

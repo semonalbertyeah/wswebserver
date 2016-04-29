@@ -1,0 +1,7 @@
+# This file contains vnc password of target hosts.
+# Each item is corresponding to token files.
+# Take the format of:
+#   token: password
+# For example, host with vnc password of "93Ndi8", with token "test_uuid"
+#   test_uuid: 93Ndi8
+

@@ -1,0 +1,93 @@
+#!/bin/bash
+#
+# fronwebsockifyd Startup script for the fronware websocket proxy.
+#
+# chkconfig: 345 85 15
+# description: Customized websockify daemon.
+# processname: fronwebsockify
+# config: /etc/websockify/websockify
+# pidfile: /var/run/websockify/fronwebsockify.pid
+#
+### BEGIN INIT INFO
+# Provides: websockifyd
+# Description: The fronwebsockify
+### END INIT INFO
+
+# Source function library
+. /etc/rc.d/init.d/functions
+
+prog=fronwebsockifyd
+process=${FRONWEBSOCKIFY-/usr/bin/fronwebsockify}
+pidfile=${PIDFILE-/var/run/websockify/fronwebsockify.pid}
+lockfile=${LOCKFILE-/var/lock/subsys/fronwebsockifyd}
+configfile=${CONFIGFILE-/etc/websockify/websockify}
+RETVAL=0
+STOP_TIMEOUT=${STOP_TIMEOUT-10}
+OPTIONS="-D"
+
+_load_config () {
+    if [ -f /etc/websockify/websockify ]; then
+        . /etc/websockify/websockify
+    fi
+
+    WEB=${WEB-"/usr/share/novnc"}
+    TOKENS=${TOKENS-"/etc/websockify/tokens"}
+    PASSWDS=${PASSWDS-"/etc/websockify/passwds"}
+    PONG=${PONG-"false"}
+    HEARTBEAT=${HEARTBEAT-0}
+    LOGS=${LOGS-"/var/log/fronwebsockify"}
+    ADDR=${ADDR-"8080"}
+}
+
+_parse_config () {
+    OPTIONS="$OPTIONS --web=$WEB --target-config=$TOKENS --target-credential=$PASSWDS --log-file=$LOGS $ADDR"
+}
+
+
+start () {
+    echo -n $"Starting $prog:"
+    _load_config
+    _parse_config
+    daemon --pidfile=${pidfile} $process $OPTIONS
+    RETVAL=$?
+    echo
+    [ $RETVAL = 0 ] && touch ${lockfile}
+    return $RETVAL
+}
+
+stop() {
+    echo -n $"Stopping $prog:"
+    killproc -p ${pidfile} -d ${STOP_TIMEOUT} $process
+    RETVAL=$?
+    echo
+    [ $RETVAL = 0 ] && rm -f ${lockfile} ${pidfile}
+}
+
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status -p ${pidfile} $process
+        RETVAL=$?
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    condrestart|try-restart)
+        if status -p ${pidfile} $process >&/dev/null; then
+            stop
+            start
+        fi
+        ;;
+    *)
+        echo $"Usage: service $prog {start|stop|status|restart|condrestart|try-restart}"
+        RETVAL=2
+esac
+
+exit $RETVAL

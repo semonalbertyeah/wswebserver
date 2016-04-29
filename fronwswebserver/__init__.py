@@ -15,7 +15,7 @@ from wswebserver.litekv import ALiteKV
 import wswebserver
 
 
-db_name = 'fronws'
+db_name = 'fronws.db'
 tab_name = 'wsconnection'
 
 db = ALiteKV(filename=db_name, table=tab_name)

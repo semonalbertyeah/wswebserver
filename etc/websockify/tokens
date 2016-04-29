@@ -1,0 +1,6 @@
+# This file contains the IP address and port number of target hosts.
+# Take for format of token: ip:port
+#
+# For example: for host 192.168.1.3:5903, idenfied with token "test_uuid".
+# 
+#   test_uuid: 192.168.1.3:5903

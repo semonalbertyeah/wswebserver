@@ -2,6 +2,12 @@ import re
 import logging, os, sys, traceback
 import inspect
 
+try:
+    from urllib.parse import parse_qs, urlparse
+except:
+    from cgi import parse_qs
+    from urlparse import urlparse
+
 from BaseHTTPServer import _quote_html
 
 from websockify import websocket
@@ -24,9 +30,11 @@ from _compat import integer_types, reraise
 tokens = None
 credentials = None
 
+
 def reraise_exception(e):
     exc_type, exc_value, tb = sys.exc_info()
     reraise(exc_type, exc_value, tb)
+
 
 # def quote_html(html):
 #     html = _quote_html(html)
@@ -35,6 +43,7 @@ def reraise_exception(e):
 #     html = html.replace('\r', '<br />')
 #     html = html.replace('\n', '<br />')
 #     return html
+
 
 class HTTPError(Exception):
     code = None
@@ -180,6 +189,15 @@ class WsWebHandler(ProxyRequestHandler, object):
             If there is both a dynamic url and a static url with same name,
             dynamic url handler will always be called.
     """
+
+    # when handling websocket, this indicate the target host.
+    _token = None
+
+    # to store query string arguments.
+    # a dict like:
+    # {'arg1': val1, 'arg2': val2, ...}
+    _args = None
+
     # to store routes
     # _url_mappings = {
     #     re.compile('pattern') : handler,
@@ -194,6 +212,10 @@ class WsWebHandler(ProxyRequestHandler, object):
     #     ...
     # }
     _usr_exceptions = {}
+
+    # to store callback funcs which will be called after connection.
+    _finished_cbs = []
+
 
     default_headers = {
         'Content-Type': 'text/html',
@@ -232,12 +254,46 @@ class WsWebHandler(ProxyRequestHandler, object):
         """
         pass
 
+    ##########################
+    # debug tools
+    ##########################
+    def log_error(self, format, *args):
+        self.logger.error("%s - - [%s] %s" % (self.address_string(), self.log_date_time_string(), format % args))
 
-    # def finish(self):
-    #     super(WsWebHandler, self).finish()
-    #     print '---- handling finished, pid:', os.getpid()
-    #     if self.server.ws_connection:
-    #         print '---- websocket connection, do something'
+
+    ###########################
+    # properties
+    ###########################
+
+    @property
+    def args(self):
+        """
+            query string arguments
+        """
+        if self._args is None:
+            self._args = parse_qs(urlparse(self.path)[4])
+        return self._args
+
+
+    @property
+    def ws_connection(self):
+        return self.server.ws_connection
+
+    @property
+    def token(self):
+        """
+            websockify target token.
+            how it was gotten:
+                When there is a token, 
+                current request's path: 
+                    GET(/?token=asdfasdf)
+                and updated to websocket.
+        """
+        if self._token is None:
+            if 'token'  in self.args:
+                self._token = self.args['token'][0].rstrip('\n')
+
+        return self._token
 
 
     ######################
@@ -293,6 +349,11 @@ class WsWebHandler(ProxyRequestHandler, object):
         raise HTTPError(404, 'not registered url "%s"' % url)  # not found
 
 
+
+    ##################
+    # make response
+    ##################
+
     def make_response(self, rv, default_status=200, extra_headers={}):
         if isinstance(rv, tuple):
             if len(rv) == 2:
@@ -335,6 +396,7 @@ class WsWebHandler(ProxyRequestHandler, object):
             }
         headers.update(extra_headers)
         return content, status, headers
+
 
     ###################
     # error handler
@@ -403,6 +465,32 @@ class WsWebHandler(ProxyRequestHandler, object):
         return self.make_error_response(500, traceback.format_exc())
 
 
+    ##########################
+    # finished callback
+    ##########################
+
+    @classmethod
+    def finished(cls, f):
+        """
+            register a callback func which will be called after sending the response.
+            the last process.
+            example:
+                @WsWebHandler.finished
+                def finished_handler(req):
+                    print req
+        """
+        assert not f in cls._finished_cbs
+        assert callable(f)
+        cls._finished_cbs.append(f)
+        return f
+
+
+    def handle_finished_cbs(self):
+        super(WsWebHandler, self).finish()
+        for cb in self._finished_cbs:
+            cb(self)
+
+
     ###########################
     # internals
     ###########################
@@ -413,7 +501,8 @@ class WsWebHandler(ProxyRequestHandler, object):
         """
         self.raw_requestline = self.rfile.readline()
         if not self.raw_requestline:
-            raise HTTPError(500, 'No data received.')
+            # raise HTTPError(500, 'No data received.')
+            raise WsWebHandler.ErrButDoNothing('No data received, and we treat it as a close connection, and just ignore it.')
         if not self.parse_request():    # An error code has been sent, just exit
             raise WsWebHandler.ErrButDoNothing('http parsing error, but exception handling is ready done.')
 
@@ -443,6 +532,11 @@ class WsWebHandler(ProxyRequestHandler, object):
         return response
 
 
+    # # rewriting BaseHTTPRequestHandler.handle -> disable keep-alive
+    # def handle(self):
+    #     super(WsWebHandler, self).handle()
+    #     # self.handle_one_request()
+
     # BaseHTTPServer.BaseHTTPHandler.handle_one_request
     # (called by BaseHTTPServer.BaseHTTPHandler.handle_request)
     def handle_one_request(self):
@@ -454,18 +548,25 @@ class WsWebHandler(ProxyRequestHandler, object):
             response = None
             try:
                 response = self.process_request()
-            except Exception, e:
-                response = self.make_response(self.handle_exception(e))
             except WsWebHandler.ErrButDoNothing, e:
                 self.log_message('ErrButDoNothing: %r' % e)
+            except Exception, e:
+                self.log_error('%s' % traceback.format_exc())
+                print 'adsasdfasdf'
+                response = self.make_response(self.handle_exception(e))
 
             if response:
                 content, status, headers = response
+                print 'headers:', headers
+                print 'content:'
+                print content
+                print 'status:', status
                 self.send(content, status, headers)
 
+            self.handle_finished_cbs()  # finished callbacks
         finally:
             # ---{destroy req ctx}---
-            pass
+            self.close_connection = 1   # disable keep-alive
 
     # send_response is defined under BaseHTTPRequestHandler
     def send(self, content, code=200, extra_headers={}):

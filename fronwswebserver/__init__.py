@@ -3,6 +3,7 @@
     fronware websocket server logic.
 """
 
+import os
 from string import Template
 
 
@@ -15,7 +16,10 @@ from wswebserver.litekv import ALiteKV
 import wswebserver
 
 
-db_name = 'fronws.db'
+if os.geteuid() == 0:
+    db_name = '/var/tmp/fronws.db'
+else:
+    db_name = 'fronws.db'
 tab_name = 'wsconnection'
 
 db = ALiteKV(filename=db_name, table=tab_name)
@@ -80,8 +84,7 @@ def report_ws_end(req):
             resp = http_request(target_url, 'POST', data)
             if resp.status != 200:
                 loginfo = response_dumps(resp)
-                loginfo = "\n%s\n%s" % (target_url, loginfo)
-                req.log_error(loginfo)
+                req.log_error("\n%s\n%s", target_url, loginfo)
             resp.close()
 
 

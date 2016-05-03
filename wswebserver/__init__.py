@@ -551,7 +551,7 @@ class WsWebHandler(ProxyRequestHandler, object):
             except WsWebHandler.ErrButDoNothing, e:
                 self.log_message('ErrButDoNothing: %r' % e)
             except Exception, e:
-                self.log_error('%s' % traceback.format_exc())
+                self.log_error('%s', traceback.format_exc())
                 print 'adsasdfasdf'
                 response = self.make_response(self.handle_exception(e))
 

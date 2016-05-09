@@ -69,12 +69,12 @@ def report_ws_end(req):
         report end of websocket connection to main server.
     """
     global db
-    data = """<DisconnectNovnc>
-<ConnectTicket>%s</ConnectTicket>
-</DisconnectNovnc>"""
-    host_ip = req.client_address[0]
+    data = """<DisconnectNovnc><ConnectTicket>%s</ConnectTicket></DisconnectNovnc>"""
+    # host_ip = req.client_address[0]
+    host_ip = 'localhost'
     port = 80
-    path = r'/RestService/Virtualmachine/GetVncIPPortPasswdForVM'
+    # path = r'/RestService/Virtualmachine/GetVncIPPortPasswdForVM'
+    path = r'/RestService/DisconnectNovnc'
     target_url = 'http://%s:%d%s' % (host_ip, port, path)
     if req.ws_connection:
         ticket = db.pop(req.token)  # read and delete

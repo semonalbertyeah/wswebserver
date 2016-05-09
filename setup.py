@@ -11,10 +11,10 @@ setup(
     long_description='A websocket proxy and web app server.',
     packages=['wswebserver', 'fronwswebserver'],
     scripts=['fronwebsockify'],
-    data_files=[
-        ('etc/websockify', ['etc/websockify/websockify', 'etc/websockify/passwds', 'etc/websockify/tokens']),
-        ('etc/rc.d/init.d', ['fronwebsockifyd'])
-    ],
+    #data_files=[
+    #    ('etc/websockify', ['etc/websockify/websockify', 'etc/websockify/passwds', 'etc/websockify/tokens']),
+    #    ('etc/rc.d/init.d', ['fronwebsockifyd'])
+    #],
     zip_safe=False,
     include_package_data=True
 )

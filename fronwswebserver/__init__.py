@@ -8,7 +8,7 @@ from string import Template
 
 
 from wswebserver import (
-    WsWebHandler, runserver,
+    WsWebHandler,
     runserver, abort,
     get_caller_name
 )
@@ -22,7 +22,7 @@ else:
     db_name = 'fronws.db'
 tab_name = 'wsconnection'
 
-db = ALiteKV(filename=db_name, table=tab_name)
+# db = ALiteKV(filename=db_name, table=tab_name)
 
 
 import httplib, urlparse
@@ -68,7 +68,8 @@ def report_ws_end(req):
     """
         report end of websocket connection to main server.
     """
-    global db
+    # global db
+    db = ALiteKV(filename=db_name, table=tab_name)
     data = """<DisconnectNovnc><ConnectTicket>%s</ConnectTicket></DisconnectNovnc>"""
     # host_ip = req.client_address[0]
     host_ip = 'localhost'
@@ -96,7 +97,8 @@ def report_ws_end(req):
 @App.route(r'^/fap\?uuid=(?P<uuid>.+)&connectTicket=(?P<connectTicket>.+)$')
 @App.route(r'^/vnc\?uuid=(?P<uuid>.+)&connectTicket=(?P<connectTicket>.+)$')
 def vnc_handler_lanzhou(uuid=None, connectTicket=None):
-    global db
+    # global db
+    db = ALiteKV(filename=db_name, table=tab_name)
     assert uuid is not None and connectTicket is not None
 
     db.set(uuid, connectTicket)

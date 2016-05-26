@@ -833,6 +833,22 @@ def runserver(HandlerCls=None):
         server.start_server()
 
 
+def get_logger():
+    return WsWebServer.get_logger()
+
+logger = get_logger()
+
+def msg(msg, *args, **kwargs):
+    global logger
+    logger.log(logging.INFO, msg, *args, **kwargs)
+
+def vmsg(msg, *args, **kwargs):
+    global logger
+    logger.log(logging.DEBUG, msg, *args, **kwargs)
+
+def warn(msg, *args, **kwargs):
+    global logger
+    logger.log(logging.WARN, msg, *args, **kwargs)
 
 
 

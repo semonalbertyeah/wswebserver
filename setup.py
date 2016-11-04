@@ -9,7 +9,7 @@ setup(
     version=version,
     description='WsWebServer.',
     long_description='A websocket proxy and web app server.',
-    packages=['wswebserver', 'fronwswebserver'],
+    packages=['wswebserver', 'wswebserver.util', 'fronwswebserver'],
     scripts=['fronwebsockify'],
     #data_files=[
     #    ('etc/websockify', ['etc/websockify/websockify', 'etc/websockify/passwds', 'etc/websockify/tokens']),

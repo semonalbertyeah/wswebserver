@@ -10,9 +10,11 @@ from string import Template
 from wswebserver import (
     WsWebHandler,
     runserver, abort,
-    get_caller_name
+    request,
+    msg, debug, warn
 )
-from wswebserver.litekv import ALiteKV
+from wswebserver.util import get_caller_name
+from wswebserver.util.litekv import ALiteKV
 import wswebserver
 
 
@@ -64,7 +66,7 @@ class App(WsWebHandler):
 ########################
 
 @App.finished
-def report_ws_end(req):
+def report_ws_end_lanzhou(req):
     """
         report end of websocket connection to main server.
     """
@@ -122,14 +124,14 @@ def vnc_handler(uuid=None):
     token = str(uuid)
     target_host_info['token'] = '"%s"' % token
 
-    if wswebserver.tokens is None:
+    if wswebserver.cmd.tokens is None:
         abort(400, 'Token file is not used.')
 
-    if wswebserver.tokens.lookup(token) is None:
+    if wswebserver.cmd.tokens.lookup(token) is None:
         abort(403,  'UUID \"%s\" does not exist' % str(token))
 
-    if wswebserver.credentials is not None:
-        passwd = wswebserver.credentials.lookup(token)
+    if wswebserver.cmd.credentials is not None:
+        passwd = wswebserver.cmd.credentials.lookup(token)
         if passwd is not None:
             target_host_info['password'] = '"%s"' % passwd
 
@@ -147,6 +149,68 @@ def vnc_handler(uuid=None):
             raise e
 
 
+def update_token(new_rec, fn='/etc/websockify/tokens'):
+    """
+        update tokens file
+        input:
+            rec -> {
+                'token': str,
+                'ip': ip_str,
+                'port': int
+            }
+    """
+    with open(fn, 'r') as f:
+        lines = f.readlines()
+        old_recs = filter(lambda l: l.startswith(new_rec['token']), lines)
+        if old_recs:
+            for rec in old_recs:
+                lines.remove(rec)
+        lines.append('%s: %s:%s\n' % (new_rec['token'], new_rec['ip'], new_rec['port']))
+
+    with open(fn, 'w') as f:
+        f.writelines(lines)
+
+
+def update_credential(new_rec, fn='/etc/websockify/passwds'):
+    """
+        update passwds file
+        input:
+            rec -> {
+                'token': str,
+                'password': str
+            }
+    """
+    with open(fn, 'r') as f:
+        lines = f.readlines()
+        old_recs = filter(lambda l: l.startswith(new_rec['token']), lines)
+        if old_recs:
+            for rec in old_recs:
+                lines.remove(rec)
+        lines.append('%s: %s\n' % (new_rec['token'], new_rec['password']))
+
+    with open(fn, 'w') as f:
+        f.writelines(lines)
+
+
+@App.route(r'^/config$', methods=['POST'])
+def update_config():
+    """
+        update a token
+    """
+    rec = {
+        'token': request.data['uuid'],
+        'ip': request.data['ip'],
+        'port': request.data['port'],
+        'password': request.data['password']
+    }
+    print '---- upsert ----'
+    print 'token:', rec
+
+    update_token(rec)
+    update_credential(rec)
+
+    return 'ok'
+
 # ---------------- tests ---------------------
 # below are just test
 # @App.errorhandler(KeyError)
@@ -160,13 +224,39 @@ def vnc_handler(uuid=None):
 #     return 'error handler 501'
 
 
-@App.route(r'/test/', methods=['POST', 'GET'])
+@App.route(r'/test/.*', methods=['POST', 'GET'])
 def test():
     # abort(501)
-    print 'test handler, registered method: GET, POST'
-    #raise KeyError, "test KeyError message"
+    # print 'test handler, registered method: GET, POST'
+    # raise KeyError, "test KeyError message"
     # return 'just a test value.'
-    return 'test data.'
+    print 'request'
+    print 'request.command:', request.command
+    print 'request.path:', request.path
+    print 'request.request_version:', request.request_version
+    print 'request.headers:', dict(request.headers)
+    print 'request.protocol_version:', request.protocol_version
+    print 'request.requestline:', request.requestline
+    print 'request.server_version:', request.server_version
+    print 'request.sys_version:', request.sys_version
+    print 'request.client_address:', request.client_address
+    print 'request.args:', request.args
+    print 'request.token:', request.token
+    print 'request.ws_connection:', request.ws_connection
+
+    print '---- message body ----'
+    print 'request.body:', repr(request.body)
+    print 'request.content_length:', repr(request.content_length)
+    print 'request.content_type:', repr(request.content_type)
+    print 'request.data:', repr(request.data)
+    print 'request.json:', repr(request.json)
+    print 'request.request:', request.request
+
+    print '---- all request attributes ----'
+    print repr(dir(request._get_current_object()))
+
+
+    return 'OK'
 
 
 def run():

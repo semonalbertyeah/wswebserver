@@ -203,8 +203,6 @@ def update_config():
         'port': request.data['port'],
         'password': request.data['password']
     }
-    print '---- upsert ----'
-    print 'token:', rec
 
     update_token(rec)
     update_credential(rec)

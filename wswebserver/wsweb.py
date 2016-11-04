@@ -573,7 +573,9 @@ class WsWebHandler(ProxyRequestHandler, object):
     def send(self, content, code=200, extra_headers={}):
         headers = self.default_headers
         headers.update(extra_headers)
-        headers.update({'Content-Length': str(len(content))})
+        content_length = len(content)
+        if content_length > 0:
+            headers.update({'Content-Length': str(content_length)})
 
         # BaseHTTPServer:BaseHTTPRequestHandler.send_response
         self.send_response(code)

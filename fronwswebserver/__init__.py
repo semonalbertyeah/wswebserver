@@ -191,6 +191,22 @@ def update_credential(new_rec, fn='/etc/websockify/passwds'):
     with open(fn, 'w') as f:
         f.writelines(lines)
 
+def update_display(new_rec, fn='/etc/websockify/display'):
+    """
+        update display info about vnc target.
+        input:
+            new_rec -> {
+                'token': str,
+                'display': str or unicode,
+            }
+    """
+    with open(fn, 'r') as f:
+        lines = f.readlines()
+        old_recs = filter(lambda l: l.startswith(new_rec['token']), lines)
+        if old_recs:
+            for rec in old_recs:
+                lines.remove(rec)
+        lines.append('%s: %s\n' % (new_rec['token'], new_rec['display']))
 
 @App.route(r'^/config$', methods=['POST'])
 def update_config():
@@ -202,6 +218,7 @@ def update_config():
         'ip': request.data['ip'],
         'port': request.data['port'],
         'password': request.data['password']
+        'display': request.data[]
     }
 
     update_token(rec)

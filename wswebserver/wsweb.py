@@ -41,9 +41,11 @@ class WsWebServer(WebSocketProxy):
     pidfile_path=os.path.normpath('/var/run/websockify/fronwebsockify.pid')
     _daemon_pid = None
 
-    # @staticmethod
-    # def get_logger():
-    #     return logging.getLogger(WebSocketProxy.log_prefix)
+    def __init__(self, *args, **kwargs):
+        self.config = kwargs.copy()
+        kwargs.pop('credential', None)
+        kwargs.pop('display', None)
+        super(WsWebServer, self).__init__(*args, **kwargs)
 
     def daemonize(self, *args, **kwargs):
         if self.daemon_pid and self.run_as_root:

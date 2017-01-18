@@ -259,6 +259,31 @@ class WsWebHandler(ProxyRequestHandler, object):
         self.logger.error("%s - - [%s] %s" % (self.address_string(), self.log_date_time_string(), format % args))
 
 
+    ##########################
+    # properties from server
+    ##########################
+    @property
+    def config(self):
+        return self.server.config
+
+    @property
+    def targets(self):
+        return self.config.get('token_plugin', None)
+
+    @property
+    def target_display(self):
+        return self.config.get('display', None)
+
+    @property
+    def target_credential(self):
+        return self.config.get('credential', None)
+
+
+    @property
+    def ws_connection(self):
+        return self.server.ws_connection
+
+
     ###########################
     # properties
     ###########################
@@ -314,11 +339,6 @@ class WsWebHandler(ProxyRequestHandler, object):
             _args = parse_qs(urlparse(self.path)[4])
             self._args = dict((k,v[0] if len(v) == 1 else v) for (k,v) in _args.iteritems())
         return self._args
-
-
-    @property
-    def ws_connection(self):
-        return self.server.ws_connection
 
     @property
     def token(self):

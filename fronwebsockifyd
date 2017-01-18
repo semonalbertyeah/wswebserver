@@ -23,7 +23,7 @@ lockfile=${LOCKFILE-/var/lock/subsys/fronwebsockifyd}
 configfile=${CONFIGFILE-/etc/websockify/websockify}
 RETVAL=0
 STOP_TIMEOUT=${STOP_TIMEOUT-10}
-OPTIONS="-D"
+OPTIONS="--daemon"
 
 _load_config () {
     if [ -f /etc/websockify/websockify ]; then
@@ -33,14 +33,16 @@ _load_config () {
     WEB=${WEB-"/usr/share/novnc"}
     TOKENS=${TOKENS-"/etc/websockify/tokens"}
     PASSWDS=${PASSWDS-"/etc/websockify/passwds"}
+    DISP=${DISP-"/etc/websockify/display"}
     PONG=${PONG-"false"}
     HEARTBEAT=${HEARTBEAT-0}
     LOGS=${LOGS-"/var/log/fronwebsockify"}
-    ADDR=${ADDR-"8080"}
+    HOST=${HOST-"0.0.0.0"}
+    PORT=${PORT="8111"}
 }
 
 _parse_config () {
-    OPTIONS="$OPTIONS --web=$WEB --target-config=$TOKENS --target-credential=$PASSWDS --log-file=$LOGS $ADDR"
+    OPTIONS="$OPTIONS --web=$WEB --target-config=$TOKENS --target-credential=$PASSWDS --target-display=$DISP --log-file=$LOGS --host=$HOST --port=$PORT"
 }
 
 

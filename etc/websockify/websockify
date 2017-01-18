@@ -1,10 +1,11 @@
 # Config file for websockify
 # shell variables
 
-# address bound to
-# you may just specify a port
-#ADDR=0.0.0.0:8080
-ADDR=0.0.0.0:8111
+# listend host
+HOST=0.0.0.0
+
+# listend port
+PORT=8111
 
 # web root of websockify
 #WEB="/usr/share/novnc"
@@ -15,12 +16,18 @@ ADDR=0.0.0.0:8111
 # password files (used by fronwebsockify)
 #PASSWDS=/etc/websockify/passwds
 
+# Display string for a give target host.
+#DISP=/etc/websockify/display
+
+# Files where logs will be saved.
+#LOGS="/var/log/fronwebsockify"
+
+# verbose
+#VERBOSE="false"
+
 # Automatically respond to ping frames with a pong
 #PONG="false"
 
 # To send a ping to the client every HEARTBEAT seconds
 # default: 0. disabled
 #HEARTBEAT=0
-
-# Files where logs will be saved.
-#LOGS="/var/log/fronwebsockify"

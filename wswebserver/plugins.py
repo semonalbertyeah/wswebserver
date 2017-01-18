@@ -123,3 +123,10 @@ class ConfigFile(object):
         """
         return self.get(key, None)
 
+
+class TokenFile(ConfigFile):
+    def lookup(self, token):
+        target = super(TokenFile, self).lookup(token)
+        host, port = target.rsplit(':', 1)
+        return (host, port)
+

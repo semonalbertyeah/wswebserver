@@ -1,7 +1,8 @@
 # -*- coding:utf-8 -*-
 
 import logging, os, sys
-import optparse
+# import optparse
+import argparse
 
 from websockify import websocket
 from websockify.websocketproxy import (
@@ -10,12 +11,12 @@ from websockify.websocketproxy import (
 
 from .wsweb import WsWebServer
 # from .plugins import CredentialFile
-from .plugins import ConfigFile
+from .plugins import ConfigFile, TokenFile
 
 
-# These 2 plugins are used to access config files and credential files (app/process scope)
-tokens = None
-credentials = None
+# # These 2 plugins are used to access config files and credential files (app/process scope)
+# tokens = None
+# credentials = None
 
 
 # # re-implementing websocketproxy.websockify_init
@@ -238,9 +239,7 @@ credentials = None
 #         server = WsWebServer(**opts.__dict__)
 #         server.start_server()
 
-import argparse
-from .plugins import ConfigFile
-def runserver2():
+def runserver():
     parser = argparse.ArgumentParser(description='wswebserver')
     parser.add_argument('--web', action='store', type=str, dest='web',
                         default='/usr/share/novnc/', metavar='DIR',
@@ -266,11 +265,15 @@ def runserver2():
     parser.add_argument('--heartbeat', action='store', type=int, dest='heartbeat',
                         default=0, metavar='INT',
                         help="send a ping to the client every HEARTBEAT seconds")
+    parser.add_argument('--host', action='store', type=str, dest='listen_host',
+                        default='0.0.0.0', metavar='IPV4')
+    parser.add_argument('--port', action='store', type=int, dest='listen_port',
+                        default=8111, metavar='PORT')
 
     args = parser.parse_args()
 
     target_config = os.path.abspath(args.target_config)
-    args.token_plugin = ConfigFile(target_config)
+    args.token_plugin = TokenFile(target_config)
     del args.target_config
 
     target_credential = os.path.abspath(args.target_credential)
@@ -299,7 +302,7 @@ def runserver2():
 
 
 if __name__ == '__main__':
-    runserver2(WsWebHandler)
+    runserver(WsWebHandler)
 
 
 

@@ -1,7 +1,6 @@
 %define name wswebserver
 %define version 0.1.0
 %define unmangled_version 0.1.0
-%define unmangled_version 0.1.0
 %define release 1
 
 Summary: WsWebServer.

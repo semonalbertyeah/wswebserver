@@ -106,6 +106,11 @@ class ConfigFile(object):
         if self.realtime:
             self.save()
 
+    def delete(self, key):
+        del self._cfg[key]
+        if self.realtime:
+            self.save()
+
     def __getitem__(self, key):
         r = self.get(key)
         if r is None:
@@ -115,6 +120,9 @@ class ConfigFile(object):
 
     def __setitem__(self, key, val):
         self.set(key, val)
+
+    def __delitem__(self, key):
+        self.delete(key)
 
     def lookup(self, key):
         """

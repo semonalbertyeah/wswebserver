@@ -37,12 +37,20 @@ _load_config () {
     PONG=${PONG-"false"}
     HEARTBEAT=${HEARTBEAT-0}
     LOGS=${LOGS-"/var/log/fronwebsockify"}
+    VERBOSE=${VERBOSE-"false"}
     HOST=${HOST-"0.0.0.0"}
     PORT=${PORT="8111"}
 }
 
 _parse_config () {
-    OPTIONS="$OPTIONS --web=$WEB --target-config=$TOKENS --target-credential=$PASSWDS --target-display=$DISP --log-file=$LOGS --host=$HOST --port=$PORT"
+    OPTIONS="$OPTIONS --web=$WEB --target-config=$TOKENS --target-credential=$PASSWDS --target-display=$DISP --heartbeat=$HEARTBEAT --log-file=$LOGS --host=$HOST --port=$PORT"
+    if [ $PONG == "true" ]; then
+        OPTIONS="$OPTIONS --auto-pong"
+    fi
+
+    if [ $VERBOSE == "true" ]; then
+        OPTIONS="$OPTIONS --verbose"
+    fi
 }
 
 

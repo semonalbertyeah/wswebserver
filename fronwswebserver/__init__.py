@@ -16,8 +16,8 @@ from wswebserver import (
 from wswebserver.util import get_caller_name
 # from wswebserver.util.litekv import ALiteKV
 
-
 # if os.geteuid() == 0:
+
 #     db_name = '/var/tmp/fronws.db'
 # else:
 #     db_name = 'fronws.db'
@@ -117,7 +117,7 @@ def vnc_handler(uuid=None):
         'path': r'""', 
         'token': r'""', 
         'password': '""',
-        'display': ""
+        'display': '""'
     }
 
     if uuid is None:
@@ -135,7 +135,7 @@ def vnc_handler(uuid=None):
     display = request.targets[token]
     if request.target_display:
         display = request.target_display.get(token, None) or display
-    target_host_info['display'] = display
+    target_host_info['display'] = '"%s"' %display
 
     if request.target_credential:
         passwd = request.target_credential.get(token, None)
@@ -157,26 +157,26 @@ def vnc_handler(uuid=None):
             raise e
 
 
-def update_token(new_rec, fn='/etc/websockify/tokens'):
-    """
-        update tokens file
-        input:
-            rec -> {
-                'token': str,
-                'ip': ip_str,
-                'port': int
-            }
-    """
-    with open(fn, 'r') as f:
-        lines = f.readlines()
-        old_recs = filter(lambda l: l.startswith(new_rec['token']), lines)
-        if old_recs:
-            for rec in old_recs:
-                lines.remove(rec)
-        lines.append('%s: %s:%s\n' % (new_rec['token'], new_rec['ip'], new_rec['port']))
+# def update_token(new_rec, fn='/etc/websockify/tokens'):
+#     """
+#         update tokens file
+#         input:
+#             rec -> {
+#                 'token': str,
+#                 'ip': ip_str,
+#                 'port': int
+#             }
+#     """
+#     with open(fn, 'r') as f:
+#         lines = f.readlines()
+#         old_recs = filter(lambda l: l.startswith(new_rec['token']), lines)
+#         if old_recs:
+#             for rec in old_recs:
+#                 lines.remove(rec)
+#         lines.append('%s: %s:%s\n' % (new_rec['token'], new_rec['ip'], new_rec['port']))
 
-    with open(fn, 'w') as f:
-        f.writelines(lines)
+#     with open(fn, 'w') as f:
+#         f.writelines(lines)
 
 
 # def update_credential(new_rec, fn='/etc/websockify/passwds'):
@@ -216,23 +216,43 @@ def update_token(new_rec, fn='/etc/websockify/tokens'):
 #                 lines.remove(rec)
 #         lines.append('%s: %s\n' % (new_rec['token'], new_rec['display']))
 
-@App.route(r'^/config$', methods=['POST'])
-def update_config():
+# @App.route(r'^/config$', methods=['POST', "DELETE"])
+@App.route(r'^/config(\?uuid=(?P<uuid>.+))?$', methods=['POST', "DELETE"])
+def update_config(uuid=None):
     """
         update a token
     """
-    rec = {
-        'token': request.data['uuid'],
-        'ip': request.data['ip'],
-        'port': request.data['port'],
-        'password': request.data['password']
-        'display': request.data[]
-    }
+    if request.method == 'POST':
+        token = request.data['uuid']
+        ip = request.data.get('ip', None)
+        port = request.data.get('port', None)
+        password = request.data.get('password', None)
+        display = request.data.get('display', None)
 
-    update_token(rec)
-    update_credential(rec)
+        if ip and port:
+            request.targets[token] = '%s:%s' % (ip, port)
 
-    return 'ok'
+        if password:
+            request.target_credential[token] = password
+
+        if display:
+            request.target_display[token] = display
+
+        return 'ok'
+
+    elif request.method == 'DELETE':
+        if uuid is None:
+            abort(404, "uuid is required.")
+        if uuid in request.targets:
+            del request.targets[uuid]
+
+        if uuid in request.target_display:
+            del request.target_display[uuid]
+
+        if uuid in request.target_credential:
+            del request.target_credential[uuid]
+
+        return 'ok'
 
 # ---------------- tests ---------------------
 # below are just test
@@ -277,7 +297,6 @@ def test():
 
     print '---- all request attributes ----'
     print repr(dir(request._get_current_object()))
-
 
     return 'OK'
 

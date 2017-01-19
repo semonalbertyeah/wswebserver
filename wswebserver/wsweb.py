@@ -296,6 +296,10 @@ class WsWebHandler(ProxyRequestHandler, object):
             return None
 
     @property
+    def method(self):
+        return self.command.upper()
+
+    @property
     def content_type(self):
         return self.headers.get('content-type', None)
 
@@ -368,8 +372,10 @@ class WsWebHandler(ProxyRequestHandler, object):
 
         # # may be an exception should be raised, as for this classmethod is an outer interface.
         # assert cls._url_mappings.get(url_repattern, None) is None   # never been registered
-        if cls._url_mappings.get(url_repattern, None) is not None:
-            raise WsWebHandler.HandlerException, "url mapping '%s' exists" % url_pattern
+        old_handler = cls._url_mappings.get(url_repattern, None)
+        # if cls._url_mappings.get(url_repattern, None) is not None:
+        if old_handler:
+            raise WsWebHandler.HandlerException, "url mapping '%s' exists, %r" % (url_pattern, old_handler)
 
         cls._url_mappings[url_repattern] = (handler, methods)
 

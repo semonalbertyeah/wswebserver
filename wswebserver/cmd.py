@@ -239,7 +239,42 @@ from .plugins import ConfigFile, TokenFile
 #         server = WsWebServer(**opts.__dict__)
 #         server.start_server()
 
-def runserver():
+
+def init_logger(log_file=None, verbose=False):
+    """
+        if log_file:
+            log to file
+        else:
+            log to stdout
+
+        if verbose:
+            show all info
+    """
+    log_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s: %(message)s"
+    )
+    if log_file:
+        log_file = os.path.abspath(log_file)
+        handler = logging.FileHandler(log_file)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(log_formatter)
+    else:
+        handler = logging.StreamHandler()
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(log_formatter)
+
+    logging.getLogger(WebSocketProxy.log_prefix).addHandler(handler)
+
+    if verbose:
+        print 'verbose log'
+        logging.getLogger(WebSocketProxy.log_prefix).setLevel(logging.DEBUG)
+
+
+def runserver(Handler):
+    """
+        Handler:
+            subclass WsWebHandler, and register url handlers.
+    """
     parser = argparse.ArgumentParser(description='wswebserver')
     parser.add_argument('--web', action='store', type=str, dest='web',
                         default='/usr/share/novnc/', metavar='DIR',
@@ -284,19 +319,29 @@ def runserver():
     args.display = ConfigFile(target_display)
     del args.target_display
 
-    if args.log_file:
-        log_file = os.path.abspath(args.log_file)
-        handler = logging.FileHandler(log_file)
-        handler.setLevel(logging.DEBUG)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        logging.getLogger(WebSocketProxy.log_prefix).addHandler(handler)
+    # log_formatter = logging.Formatter(
+    #     "%(asctime)s - %(name)s - %(levelname)s: %(message)s"
+    # )
+    # if args.log_file:
+    #     log_file = os.path.abspath(args.log_file)
+    #     handler = logging.FileHandler(log_file)
+    #     handler.setLevel(logging.DEBUG)
+    #     handler.setFormatter(log_formatter)
+    # else:
+    #     handler = logging.StreamHandler()
+    #     handler.setLevel(logging.DEBUG)
+    #     handler.setFormatter(log_formatter)
+    # logging.getLogger(WebSocketProxy.log_prefix).addHandler(handler)
 
+    # del args.log_file
+
+    # if args.verbose:
+    #     print 'verbose log'
+    #     logging.getLogger(WebSocketProxy.log_prefix).setLevel(logging.DEBUG)
+    init_logger(args.log_file, args.verbose)
     del args.log_file
 
-    if args.verbose:
-        logging.getLogger(WebSocketProxy.log_prefix).setLevel(logging.DEBUG)
-
-    server = WsWebServer(**args)
+    server = WsWebServer(RequestHandlerClass=Handler, **vars(args))
     server.start_server()
 
 

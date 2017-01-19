@@ -5,3 +5,4 @@
 # For example, host with vnc password of "93Ndi8", with token "test_uuid"
 #   test_uuid: 93Ndi8
 
+test: 123456

@@ -250,6 +250,7 @@ def init_logger(log_file=None, verbose=False):
         if verbose:
             show all info
     """
+    logger = logging.getLogger(WebSocketProxy.log_prefix)
     log_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s: %(message)s"
     )
@@ -263,11 +264,15 @@ def init_logger(log_file=None, verbose=False):
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(log_formatter)
 
-    logging.getLogger(WebSocketProxy.log_prefix).addHandler(handler)
+    logger.addHandler(handler)
 
     if verbose:
         print 'verbose log'
-        logging.getLogger(WebSocketProxy.log_prefix).setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+
+    sys.excepthook = lambda t, v, tb: logger.error("Uncaught", exc_info=(t, v, tb))
+
+    return logger
 
 
 def runserver(Handler):
@@ -319,25 +324,6 @@ def runserver(Handler):
     args.display = ConfigFile(target_display)
     del args.target_display
 
-    # log_formatter = logging.Formatter(
-    #     "%(asctime)s - %(name)s - %(levelname)s: %(message)s"
-    # )
-    # if args.log_file:
-    #     log_file = os.path.abspath(args.log_file)
-    #     handler = logging.FileHandler(log_file)
-    #     handler.setLevel(logging.DEBUG)
-    #     handler.setFormatter(log_formatter)
-    # else:
-    #     handler = logging.StreamHandler()
-    #     handler.setLevel(logging.DEBUG)
-    #     handler.setFormatter(log_formatter)
-    # logging.getLogger(WebSocketProxy.log_prefix).addHandler(handler)
-
-    # del args.log_file
-
-    # if args.verbose:
-    #     print 'verbose log'
-    #     logging.getLogger(WebSocketProxy.log_prefix).setLevel(logging.DEBUG)
     init_logger(args.log_file, args.verbose)
     del args.log_file
 

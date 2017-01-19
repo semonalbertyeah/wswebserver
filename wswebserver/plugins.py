@@ -98,7 +98,6 @@ class ConfigFile(object):
     def get(self, key, alt=None):
         if (not self._cfg) or self.realtime:
             self.load()
-
         return self._cfg.get(key, alt)
 
     def set(self, key, val):
@@ -115,7 +114,6 @@ class ConfigFile(object):
         r = self.get(key)
         if r is None:
             raise KeyError, "%r" % key
-
         return r
 
     def __setitem__(self, key, val):
@@ -123,6 +121,9 @@ class ConfigFile(object):
 
     def __delitem__(self, key):
         self.delete(key)
+
+    def __contains__(self, key):
+        return self.get(key, None) is not None
 
     def lookup(self, key):
         """

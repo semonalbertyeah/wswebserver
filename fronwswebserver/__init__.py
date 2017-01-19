@@ -218,7 +218,7 @@ def vnc_handler(uuid=None):
 
 # @App.route(r'^/config$', methods=['POST', "DELETE"])
 @App.route(r'^/config(\?uuid=(?P<uuid>.+))?$', methods=['POST', "DELETE"])
-def update_config(uuid=None):
+def config(uuid=None):
     """
         update a token
     """

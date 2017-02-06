@@ -1,12 +1,14 @@
 # -*- coding:utf-8 -*-
 
 import logging, os, sys, traceback, re, inspect, json
-try:
-    from urllib.parse import parse_qs, urlparse
-except:
-    from cgi import parse_qs
-    from urlparse import urlparse
+# try:
+#     from urllib.parse import parse_qs, urlparse
+# except:
+#     from cgi import parse_qs
+#     from urlparse import urlparse
 
+from cgi import parse_qs, parse_header
+from urlparse import urlparse
 
 from BaseHTTPServer import _quote_html
 from websockify.websocketproxy import ProxyRequestHandler, WebSocketProxy
@@ -301,7 +303,21 @@ class WsWebHandler(ProxyRequestHandler, object):
 
     @property
     def content_type(self):
-        return self.headers.get('content-type', None)
+        value = self.headers.get('content-type', None)
+        if value:
+            mime, options = parse_header(value)
+            return mime
+        else:
+            return None
+
+    @property
+    def charset(self):
+        value = self.headers.get('content-type', None)
+        if value:
+            mime, options = parse_header(value)
+            return options.get('charset', None)
+        else:
+            return None
 
     @property
     def body(self):

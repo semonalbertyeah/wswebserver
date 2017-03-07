@@ -157,6 +157,58 @@ def vnc_handler(uuid=None):
             raise e
 
 
+@App.route(r'^/spice/spice(\?uuid=(?P<uuid>.+))?$')
+def spice_handler(uuid=None):
+    """
+        templated variables
+    """
+
+    target_host_info = {
+        'path': r'', 
+        'token': r'', 
+        'password': '',
+        'display': ''
+    }
+
+    if uuid is None:
+        abort(403, 'Require UUID')
+
+    token = "%s_%s" % (str(uuid), 'spice')
+    target_host_info['token'] = token
+
+    if request.targets is None:
+        abort(400, 'Token file is not used.')
+
+    if request.targets.get(token, None) is None:
+        abort(403,  'UUID \"%s\" does not exist' % str(uuid))
+
+    display = 'spice-%s' % request.targets[token]
+    if request.target_display:
+        display = request.target_display.get(token, None) or display
+    target_host_info['display'] = display
+
+    if request.target_credential is None:
+        abort(400, 'Credential file is not used.')
+
+    passwd = request.target_credential.get(token, None)
+    if passwd is None:
+        abort(403, 'no credential info for UUID \"%s\"' % str(uuid))
+    target_host_info['password'] = passwd
+
+    try:
+        with open('spice/spice_auto_templated.html') as f:
+            content = f.read()
+            # safe_substitue 
+            #   -> ignore template variable (start with '$') not present in template data.
+            content = Template(content).safe_substitute(target_host_info) 
+            return content
+    except IOError, e:
+        if e.errno == 2:
+            abort(404, 'spice/spice_auto_templated.html does not exist.')
+        else:
+            raise e
+
+
 # def update_token(new_rec, fn='/etc/websockify/tokens'):
 #     """
 #         update tokens file

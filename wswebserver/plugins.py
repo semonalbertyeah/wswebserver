@@ -57,7 +57,7 @@ class ConfigFile(object):
     def __init__(self, path, realtime=True):
         """
             path: path to config file.
-            realtime: if true, reload every time.
+            realtime: if true, no buffer.
         """
         self.cfg_file_path = path
         self.realtime = realtime
@@ -98,15 +98,24 @@ class ConfigFile(object):
     def get(self, key, alt=None):
         if (not self._cfg) or self.realtime:
             self.load()
+
         return self._cfg.get(key, alt)
 
     def set(self, key, val):
+        if self.realtime:
+            self.load()
+
         self._cfg[key] = str(val)
+
         if self.realtime:
             self.save()
 
     def delete(self, key):
+        if self.realtime:
+            self.load()
+
         del self._cfg[key]
+
         if self.realtime:
             self.save()
 
